@@ -33,7 +33,8 @@ num_updates = int(args.num_frames) // args.num_steps // args.num_processes
 torch.manual_seed(args.seed)
 if args.cuda:
     torch.cuda.manual_seed(args.seed)
-
+    
+args.log_dir = args.log_dir + args.env_name + '_' + args.algo
 try:
     os.makedirs(args.log_dir)
 except OSError:
