@@ -84,9 +84,9 @@ def main():
     if args.cuda:
         actor_critic.cuda()
 
-    if args.algo == 'a2c':
+    if args.algo == 'a2c' and not args.use_adam:
         optimizer = optim.RMSprop(actor_critic.parameters(), args.lr, eps=args.eps, alpha=args.alpha)
-    elif args.algo == 'ppo':
+    elif args.algo == 'ppo' or args.algo == 'a2c':
         optimizer = optim.Adam(actor_critic.parameters(), args.lr, eps=args.eps)
     elif args.algo == 'acktr':
         optimizer = KFACOptimizer(actor_critic)
