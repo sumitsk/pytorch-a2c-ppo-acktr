@@ -4,7 +4,6 @@ import torch.nn.functional as F
 from distributions import Categorical, DiagGaussian
 from utils import orthogonal
 
-
 def weights_init(m):
     classname = m.__class__.__name__
     if classname.find('Conv') != -1 or classname.find('Linear') != -1:
@@ -180,3 +179,105 @@ class MLPPolicy(FFPolicy):
         x = F.tanh(x)
 
         return value, x, states
+
+
+# bipedal walker
+class BPW_MLPPolicy(FFPolicy):
+    def __init__(self, num_inputs, action_space):
+        super(BPW_MLPPolicy, self).__init__()
+
+        self.action_space = action_space
+
+        self.fc1 = nn.Linear(num_inputs, 256)
+        self.lrelu1 = nn.LeakyReLU(0.1)
+        self.fc2 = nn.Linear(256, 256)
+        self.lrelu2 = nn.LeakyReLU(0.1)
+        self.fc3 = nn.Linear(256, 128)
+        self.lrelu3 = nn.LeakyReLU(0.1)
+        self.fc4 = nn.Linear(128, 128)
+        self.lrelu4 = nn.LeakyReLU(0.1)
+
+        self.value = nn.Linear(128, 1)
+        self.policy = nn.Linear(128, 64)
+        self.lrelu_policy = nn.LeakyReLU(0.1)
+        
+        if action_space.__class__.__name__ == "Discrete":
+            num_outputs = action_space.n
+            self.dist = Categorical(64, num_outputs)
+        elif action_space.__class__.__name__ == "Box":
+            num_outputs = action_space.shape[0]
+            self.dist = DiagGaussian(64, num_outputs)
+        else:
+            raise NotImplementedError
+
+        self.train()
+        self.reset_parameters()
+
+    @property
+    def state_size(self):
+        return 1
+
+    def reset_parameters(self):
+        self.apply(weights_init_mlp)
+
+        """
+        tanh_gain = nn.init.calculate_gain('tanh')
+        self.a_fc1.weight.data.mul_(tanh_gain)
+        self.a_fc2.weight.data.mul_(tanh_gain)
+        self.v_fc1.weight.data.mul_(tanh_gain)
+        self.v_fc2.weight.data.mul_(tanh_gain)
+        """
+
+        if self.dist.__class__.__name__ == "DiagGaussian":
+            self.dist.fc_mean.weight.data.mul_(0.01)
+
+    def forward(self, inputs, states, masks):
+        x = self.lrelu1(self.fc1(inputs))
+        x = self.lrelu2(self.fc2(x))
+        x = self.lrelu3(self.fc3(x))
+        x = self.lrelu4(self.fc4(x))
+
+        value = self.value(x)
+        x = self.lrelu_policy(self.policy(x))
+
+        return value, x, states
+
+
+'''
+class MetaNet(nn.Module):
+    def __init__(self, input_dim, action_space):
+        super(MetaNet, self).__init__()
+        self.input_dim = input_dim
+        self.hidden_dim = 48
+        self.action_space = action_space
+
+        self.lstm = nn.LSTMCell(self.input_dim, self.hidden_dim)
+        self.value = nn.Linear(self.hidden_dim, 1)
+
+        # NOTE: assuming action_space is of discrete class
+        self.policy = nn.Linear(self.hidden_dim, self.action_space.n)
+        self.sfm = nn.Softmax()
+        self.logsfm = nn.LogSoftmax()
+
+        self.train()
+
+    def forward(self, inputs):
+        # inputs: x - observation (current_observation, last reward, last action one-hot, t)
+        # hx - hidden state
+        # cx - cell state
+
+        x, (hx,cx) = inputs    
+        # TODO: implement any encoding of input (x) here
+
+        x = x.view(1, self.input_dim)
+        hx, cx = self.lstm(x, (hx,cx))    
+        x = hx
+
+        val = self.value(x)
+        pol = self.policy(x)
+        action_probs = self.sfm(pol)
+        action_log_probs = self.logsfm(pol)
+
+        return x, 
+
+'''

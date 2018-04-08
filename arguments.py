@@ -12,18 +12,18 @@ def get_args():
     parser.add_argument(
             '--lr', 
             type=float, 
-            default=1e-4,
+            default=7e-4,
             help='learning rate (default: 7e-4)')    
+    parser.add_argument(
+            '--use-adam',
+            action='store_true',
+            default=False,
+            help='use adam optimizer')
     parser.add_argument(
             '--eps', 
             type=float, 
             default=1e-5,
             help='RMSprop optimizer epsilon (default: 1e-5)')
-    parser.add_argument(
-            '--adam',
-            action='store_true',
-            default=True,
-            help='use Adam Optimizer (default: True)')
     parser.add_argument(
             '--alpha',
             type=float,
@@ -37,12 +37,12 @@ def get_args():
     parser.add_argument(
             '--use-gae', 
             action='store_true', 
-            default=False,
+            default=True,
             help='use generalized advantage estimation')
     parser.add_argument(
             '--tau',
             type=float, 
-            default=1.0,
+            default=0.95,
             help='gae parameter (default: 0.95)')
     parser.add_argument(
             '--entropy-coef', 
@@ -67,12 +67,12 @@ def get_args():
     parser.add_argument(
             '--num-processes', 
             type=int, 
-            default=3,
+            default=16,
             help='how many training CPU processes to use (default: 16)')
     parser.add_argument(
             '--num-steps', 
             type=int, 
-            default=20,
+            default=5,
             help='number of forward steps in A2C (default: 5)')
     parser.add_argument(
             '--ppo-epoch', 
@@ -116,8 +116,8 @@ def get_args():
             help='number of frames to train (default: 10e6)')
     parser.add_argument(
             '--env-name', 
-            default='PongNoFrameskip-v4',
-            help='environment to train on (default: PongNoFrameskip-v4)')
+            default='MountainCar-v0',
+            help='environment to train on (default: MountainCar-v0)')
     parser.add_argument(
             '--log-dir', 
             default='/tmp/gym/',
