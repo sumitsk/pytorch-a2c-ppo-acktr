@@ -1,13 +1,13 @@
 import os
 
-import gym
+import gym, mujoco_py
 from gym.spaces.box import Box
 
 from baselines import bench
 from baselines.common.atari_wrappers import make_atari, wrap_deepmind
 
 #import pybullet_envs
-import roboschool
+#import roboschool
 
 '''
 try:
@@ -20,6 +20,8 @@ except ImportError:
 def make_env(env_id, seed, rank, log_dir):
     def _thunk():
         env = gym.make(env_id)
+        ''' required for using baselines precisely dummyvecenv function'''
+        env.observation_space.dtype = env.observation_space.high.dtype
         is_atari = hasattr(gym.envs, 'atari') and isinstance(env.unwrapped, gym.envs.atari.atari_env.AtariEnv)
         if is_atari:
             env = make_atari(env_id)

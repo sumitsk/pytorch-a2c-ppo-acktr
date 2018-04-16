@@ -98,7 +98,7 @@ class VecEnvAgent(object):
 			#print (cpu_actions)
 			#input()
 
-			# Obser reward and next obs
+			# Observe reward and next obs
 			obs, reward, done, info = self.envs.step(cpu_actions)
 			reward = torch.from_numpy(np.expand_dims(np.stack(reward), 1)).float()
 			self.episode_rewards += reward
