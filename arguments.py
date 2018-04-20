@@ -6,6 +6,11 @@ def get_args():
     parser.add_argument(
             '--env-name',
             default='AntEnv')
+    parser.add_argument(
+            "--velocity-dir",
+            default='posx',
+            help='set one from: posx | posy | negx | negy ')
+    
     # HYPERPARAMETERS
     parser.add_argument(
             '--algo', 
@@ -149,5 +154,5 @@ def get_args():
     args.use_adam = not args.no_adam
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     args.vis = not args.no_vis
-
+    args.save_dir += args.velocity_dir + '/'
     return args

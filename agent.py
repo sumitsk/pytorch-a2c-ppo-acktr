@@ -43,6 +43,9 @@ class Agent(object):
         #self.env = normalize(MountainCarEnv())
         #self.env = normalize(CartpoleEnv())
         self.env = normalize(AntEnv())
+        # set the target velocity direction (for learning sub-policies)
+        self.env.velocity_dir = self.args.velocity_dir      
+        
         self.reset_env()
 
         self.obs_shape = self.env.observation_space.shape
@@ -139,6 +142,8 @@ class Agent(object):
             next_obs, reward, done, info = self.env.step(cpu_actions)
             next_obs = Tensor(next_obs).view(1, -1)
             
+        
+            # a constant reward scaling factor can be introduced to stabilise training and prevent large value losses
             # reward = reward * 0.01
             done = done or step == self.args.episode_max_length
             mask = 1.0 if not done else 0.0
