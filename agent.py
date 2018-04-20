@@ -1,174 +1,237 @@
 import copy
-import glob
 import os
 import time
-
-import gym
 import numpy as np
+import pdb
+import datetime
+
+#import gym
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
 
 from kfac import KFACOptimizer
 from model import CNNPolicy, MLPPolicy
 from storage import RolloutStorage
-from visualize import visdom_plot
+from utils import save_checkpoint
 from algo import update
+from arguments import get_args
+from visualize import visdom_plot
 
-class VecEnvAgent(object):
-	def __init__(self, envs, args):
-		self.envs = envs
-		self.args = args
+#import rllab.misc.logger as logger
+from rllab.envs.normalized_env import normalize
+from rllab.envs.mujoco.ant_env import AntEnv
+#from rllab.envs.box2d.cartpole_env import CartpoleEnv
+#from rllab.envs.box2d.mountain_car_env import MountainCarEnv
 
-		obs_shape = self.envs.observation_space.shape
-		self.obs_shape = (obs_shape[0] * self.args.num_stack, *obs_shape[1:])
-		
-		self.actor_critic = self.select_network()
-		self.optimizer = self.select_optimizer()	
-		if self.args.cuda:	self.actor_critic.cuda()
+from tensorboardX import SummaryWriter
 
-		self.action_shape = 1 if self.envs.action_space.__class__.__name__ == "Discrete" \
-							else self.envs.action_space.shape[0]		
-		
-		self.current_obs = torch.zeros(self.args.num_processes, *self.obs_shape)
-		obs = self.envs.reset()
-		self.update_current_obs(obs)
-		
-		self.rollouts = RolloutStorage(self.args.num_steps, self.args.num_processes, 
-			self.obs_shape, self.envs.action_space, self.actor_critic.state_size)
-		self.rollouts.observations[0].copy_(self.current_obs)
-
-		# These variables are used to compute average rewards for all processes.
-		self.episode_rewards = torch.zeros([self.args.num_processes, 1])
-		self.final_rewards = torch.zeros([self.args.num_processes, 1])
-
-		if self.args.cuda:
-			self.current_obs = self.current_obs.cuda()
-			self.rollouts.cuda()
-
-		if self.args.vis:
-			from visdom import Visdom
-			self.viz = Visdom(port=args.port)
-			self.win = None	
-
-	def select_network(self):
-		if len(self.envs.observation_space.shape) == 3:
-			actor_critic = CNNPolicy(self.obs_shape[0], self.envs.action_space, 
-				self.args.recurrent_policy)
-		else:
-			assert not self.args.recurrent_policy, \
-				"Recurrent policy is not implemented for the MLP controller"
-			actor_critic = MLPPolicy(self.obs_shape[0], self.envs.action_space)
-			#actor_critic = BPW_MLPPolicy(obs_shape[0], self.envs.action_space)		
-		return actor_critic
+# if using gpu
+# UGLY WAY TO CALL ARGUMENT IN EVERY FILE
+args = get_args()
+use_cuda = args.cuda
+FloatTensor = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
+LongTensor = torch.cuda.LongTensor if use_cuda else torch.LongTensor
+ByteTensor = torch.cuda.ByteTensor if use_cuda else torch.ByteTensor
+Tensor = FloatTensor
 
 
-	def select_optimizer(self):
-		if self.args.algo == 'a2c' and not self.args.use_adam:
-			optimizer = optim.RMSprop(self.actor_critic.parameters(), self.args.lr, 
-				eps=self.args.eps, alpha=self.args.alpha)
-		elif self.args.algo == 'ppo' or self.args.algo == 'a2c':
-			optimizer = optim.Adam(self.actor_critic.parameters(), self.args.lr, 
-				eps=self.args.eps)
-		elif self.args.algo == 'acktr':
-			optimizer = KFACOptimizer(self.actor_critic)	
-		else:
-			raise TypeError("Optimizer should be any one from {a2c, ppo, acktr}")	
-		return optimizer	
+class Agent(object):
+    def __init__(self, args):
+        self.args = args
+        #self.env = gym.make(self.args.env_name)
+        #self.env = normalize(MountainCarEnv())
+        #self.env = normalize(CartpoleEnv())
+        self.env = normalize(AntEnv())
+        self.reset_env()
+
+        self.obs_shape = self.env.observation_space.shape
+        
+        self.actor_critic = self.select_network()
+        self.optimizer = self.select_optimizer()
+        if self.args.cuda:
+            self.actor_critic.cuda()
+
+        # list of RolloutStorage objects
+        self.episodes_rollout = []      
+        # concatenation of all episodes' rollout
+        self.rollouts = RolloutStorage()    
+        # this directory is used for tensorboardX only
+        self.writer = SummaryWriter('log_directory')
+
+        self.episodes = 0
+        self.episode_steps = []
+        self.train_rewards = []
+
+        if self.args.vis:
+            from visdom import Visdom
+            self.viz = Visdom(port=args.port)
+            self.win = None
+        
+    def select_network(self):
+        if len(self.env.observation_space.shape) == 3:
+            actor_critic = CNNPolicy(self.obs_shape[0], 
+                                     self.env.action_space,
+                                     self.args.recurrent_policy)
+        else:
+            assert not self.args.recurrent_policy, \
+                "Recurrent policy is not implemented for the MLP controller"
+            actor_critic = MLPPolicy(self.obs_shape[0], 
+                                     self.env.action_space)
+        return actor_critic
+
+    def select_optimizer(self):
+        if self.args.algo == 'acktr':
+            optimizer = KFACOptimizer(self.actor_critic)
+        elif self.args.use_adam:
+            optimizer = optim.Adam(self.actor_critic.parameters(),
+                                   self.args.lr)
+        else:
+            optimizer = optim.RMSprop(self.actor_critic.parameters(),
+                                      self.args.lr,
+                                      eps=self.args.eps,
+                                      alpha=self.args.alpha)
+        return optimizer
+
+    def reset_env(self):
+        self.current_obs = Tensor(self.env.reset()).view(1, -1)
+
+    def custom_reward(self, info):
+        raise NotImplementedError
+
+    def load(self, filename):
+        # load models and optimizer
+        '''
+        load_device = 'cuda:0'
+        target_device = 'cuda:0' if use_cuda else 'cpu'
+        '''
+        load_device = 'cpu'
+        target_device = 'cpu'
+
+        checkpoint = torch.load(filename, map_location={load_device: target_device})
+        self.main.load_state_dict(checkpoint['state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer'])
+        episode_number = checkpoint['episode_number']
+        return episode_number
+
+    def save(self, episode_num, filename):
+        # save models and optimizer at checkpoint
+        save_checkpoint({
+            'episode_number': episode_num,
+            'state_dict': self.actor_critic.state_dict(),
+            'optimizer': self.optimizer.state_dict(),
+        }, filename=filename)
 
 
-	def update_current_obs(self, obs):
-		shape_dim0 = self.envs.observation_space.shape[0]
-		obs = torch.from_numpy(obs).float()
-		if self.args.num_stack > 1:
-			self.current_obs[:, :-shape_dim0] = self.current_obs[:, shape_dim0:]
-		self.current_obs[:, -shape_dim0:] = obs
+    # rollout one episode
+    def rollout_episode(self):
+        rollout = RolloutStorage()
+        self.reset_env()
+        step = 0
+        done = False
+        while not done:
+            step += 1
+            value, action, action_logprob = self.actor_critic.act(
+                Variable(self.current_obs, volatile=True)
+                )
 
+            cpu_actions = action.data.squeeze(1).cpu().numpy()[0]
+            next_obs, reward, done, info = self.env.step(cpu_actions)
+            next_obs = Tensor(next_obs).view(1, -1)
+            
+            # reward = reward * 0.01
+            done = done or step == self.args.episode_max_length
+            mask = 1.0 if not done else 0.0
+            rollout.insert(self.current_obs, action.data, reward, 
+                           value.data, action_logprob.data, mask)
+            self.current_obs.copy_(next_obs)
+        
+        next_value = self.actor_critic.forward(
+                        Variable(rollout.observations[-1], volatile=True)
+                        )[0].data
+        rollout.compute_returns(next_value, self.args.use_gae,
+                                self.args.gamma, self.args.tau)
 
-	def run(self):
-		for step in range(self.args.num_steps):
-			value, action, action_log_prob, states = self.actor_critic.act(
-				Variable(self.rollouts.observations[step], volatile=True),
-				Variable(self.rollouts.states[step], volatile=True),
-				Variable(self.rollouts.masks[step], volatile=True)
-				)
-			cpu_actions = action.data.squeeze(1).cpu().numpy()
-			#print (cpu_actions)
-			#input()
+        #print ('steps:',step)
+        self.episode_steps.append(step)
+        return rollout
+        
+    def pre_update(self):
+        self.concatenate_rollouts()    
+        self.rollouts.convert_to_tensor()
 
-			# Observe reward and next obs
-			obs, reward, done, info = self.envs.step(cpu_actions)
-			reward = torch.from_numpy(np.expand_dims(np.stack(reward), 1)).float()
-			self.episode_rewards += reward
+    def post_update(self):
+        self.episodes_rollout = []
+        self.rollouts.clear_history()  
 
-			# If done then clean the history of observations.
-			masks = torch.FloatTensor([[0.0] if done_ else [1.0] for done_ in done])
-			self.final_rewards *= masks
-			self.final_rewards += (1 - masks) * self.episode_rewards
-			self.episode_rewards *= masks
+    def concatenate_rollouts(self):
+        assert self.rollouts.size == 0, 'ROLLOUT IS NOT EMPTY'
+        for rollout in self.episodes_rollout:
+            self.rollouts.observations += rollout.observations
+            self.rollouts.actions += rollout.actions
+            self.rollouts.action_logprobs += rollout.action_logprobs
+            self.rollouts.value_preds += rollout.value_preds
+            self.rollouts.rewards += rollout.rewards
+            self.rollouts.returns += rollout.returns
+            
+    def collect_samples(self, num_episodes):
+        for ep in range(num_episodes):
+            rollout = self.rollout_episode()
+            self.episodes_rollout.append(rollout)
+            self.episodes += 1
+            episode_reward = np.sum(rollout.rewards)
+            self.train_rewards.append(episode_reward)
+            self.log_to_tensorboard(rollout)
+    
+    def log_to_tensorboard(self, rollout):
+        self.writer.add_scalar('data/training_reward', 
+            np.sum(rollout.rewards), self.episodes)        
 
-			if self.args.cuda: masks = masks.cuda()
+    def train(self):
+        start = time.time()
+        j = 0
+        while j < self.args.num_updates:
+            j += 1
 
-			if self.current_obs.dim() == 4:
-				self.current_obs *= masks.unsqueeze(2).unsqueeze(2)
-			else:
-				self.current_obs *= masks
+            self.collect_samples(self.args.update_frequency)
+            self.pre_update()
+            dist_entropy, value_loss, action_loss = update(self)
+            self.post_update()
 
-			self.update_current_obs(obs)
-			self.rollouts.insert(step, self.current_obs, states.data, action.data, 
-				action_log_prob.data, value.data, reward, masks)
-	
-		next_value = self.actor_critic(
-						Variable(self.rollouts.observations[-1], volatile=True),
-						Variable(self.rollouts.states[-1], volatile=True),
-						Variable(self.rollouts.masks[-1], volatile=True)
-						)[0].data
+            #print('\nEpisode: %d Reward %4f' %(self.episodes, self.train_rewards[-1]))
+            print('\nEpisode: %d' %(self.episodes))
+            print('Steps: %d' %(self.episode_steps[-1]))
+            print('Reward: %4f' %(self.train_rewards[-1]))
+            print('Value Loss: %4f' %(value_loss))
+            print('Action Loss: %4f' %(action_loss))
+            print('Dist Entropy: %4f' %(dist_entropy))
 
-		self.rollouts.compute_returns(next_value, self.args.use_gae, self.args.gamma, self.args.tau)
-		dist_entropy, value_loss, action_loss = update(self)
-		self.rollouts.after_update()
-		return dist_entropy, value_loss, action_loss
-
-	def train(self, num_updates):
-		start = time.time()
-		for j in range(num_updates):
-			dist_entropy, value_loss, action_loss = self.run()
-
-			if j % self.args.save_interval == 0 and self.args.save_dir != "":
-				save_path = os.path.join(self.args.save_dir, self.args.algo)
-				try:
-					os.makedirs(save_path)
-				except OSError:
-					pass
-
-				# A really ugly way to save a model to CPU
-				save_model = self.actor_critic
-				if self.args.cuda:
-					save_model = copy.deepcopy(self.actor_critic).cpu()
-
-				save_model = [save_model,
-								hasattr(self.envs, 'ob_rms') and self.envs.ob_rms or None]
-
-				torch.save(save_model, os.path.join(save_path, self.args.env_name + ".pt"))
-
-			if j % self.args.log_interval == 0:
-				end = time.time()
-				total_num_steps = (j + 1) * self.args.num_processes * self.args.num_steps
-				print("Updates {}, num timesteps {}, FPS {}, mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}, entropy {:.5f}, value loss {:.5f}, policy loss {:.5f}".
-					format(j, total_num_steps,
-						   int(total_num_steps / (end - start)),
-						   self.final_rewards.mean(),
-						   self.final_rewards.median(),
-						   self.final_rewards.min(),
-						   self.final_rewards.max(), dist_entropy.data[0],
-						   value_loss.data[0], action_loss.data[0]))
-			if self.args.vis and j % self.args.vis_interval == 0:
-				try:
-					# Sometimes monitor doesn't properly flush the outputs
-					self.win = visdom_plot(self.viz, self.win, self.args.log_dir, 
-						self.args.env_name, self.args.algo)
-				except IOError:
-					pass
-				
+            #'''
+            if j % self.args.save_interval == 0 and self.args.save_dir != "":
+                episode_num = j * self.args.update_frequency
+                filename = self.args.save_dir + self.args.env_name + '_' + \
+                           str(episode_num) + '.pt'
+                self.save(episode_num, filename)
+            
+            '''
+            if j % self.args.log_interval == 0:
+                end = time.time()
+                
+                total_num_steps = (j + 1) * self.args.num_processes * self.args.num_steps
+                print("Updates {}, num timesteps {}, FPS {}, mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}, entropy {:.5f}, value loss {:.5f}, policy loss {:.5f}".
+                    format(j, total_num_steps,
+                           int(total_num_steps / (end - start)),
+                           self.final_rewards.mean(),
+                           self.final_rewards.median(),
+                           self.final_rewards.min(),
+                           self.final_rewards.max(), dist_entropy.data[0],
+                           value_loss.data[0], action_loss.data[0]))
+        
+            if self.args.vis and j % self.args.vis_interval == 0:
+                try:
+                    # Sometimes monitor doesn't properly flush the outputs
+                    self.win = visdom_plot(self.viz, self.win, self.args.log_dir,
+                        'Ant-v1_rllab', self.args.algo)
+                except IOError:
+                    pass
+            '''

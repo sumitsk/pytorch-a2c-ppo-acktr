@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from distributions import Categorical, DiagGaussian
 from utils import orthogonal
 
+
 def weights_init(m):
     classname = m.__class__.__name__
     if classname.find('Conv') != -1 or classname.find('Linear') != -1:
@@ -16,19 +17,19 @@ class FFPolicy(nn.Module):
     def __init__(self):
         super(FFPolicy, self).__init__()
 
-    def forward(self, inputs, states, masks):
+    def forward(self, inputs):
         raise NotImplementedError
 
-    def act(self, inputs, states, masks, deterministic=False):
-        value, x, states = self(inputs, states, masks)
+    def act(self, inputs, deterministic=False):
+        value, x = self(inputs)
         action = self.dist.sample(x, deterministic=deterministic)
         action_log_probs, dist_entropy = self.dist.logprobs_and_entropy(x, action)
-        return value, action, action_log_probs, states
+        return value, action, action_log_probs
 
-    def evaluate_actions(self, inputs, states, masks, actions):
-        value, x, states = self(inputs, states, masks)
+    def evaluate_actions(self, inputs, actions):
+        value, x = self(inputs)
         action_log_probs, dist_entropy = self.dist.logprobs_and_entropy(x, actions)
-        return value, action_log_probs, dist_entropy, states
+        return value, action_log_probs, dist_entropy
 
 
 class CNNPolicy(FFPolicy):
@@ -132,12 +133,13 @@ class MLPPolicy(FFPolicy):
         self.v_fc2 = nn.Linear(64, 64)
         self.v_fc3 = nn.Linear(64, 1)
 
+        dist_size = 64
         if action_space.__class__.__name__ == "Discrete":
             num_outputs = action_space.n
-            self.dist = Categorical(64, num_outputs)
+            self.dist = Categorical(dist_size, num_outputs)
         elif action_space.__class__.__name__ == "Box":
             num_outputs = action_space.shape[0]
-            self.dist = DiagGaussian(64, num_outputs)
+            self.dist = DiagGaussian(dist_size, num_outputs)
         else:
             raise NotImplementedError
 
@@ -162,23 +164,15 @@ class MLPPolicy(FFPolicy):
         if self.dist.__class__.__name__ == "DiagGaussian":
             self.dist.fc_mean.weight.data.mul_(0.01)
 
-    def forward(self, inputs, states, masks):
-        x = self.v_fc1(inputs)
-        x = F.tanh(x)
+    def forward(self, inputs):
+        x = F.tanh(self.v_fc1(inputs))
+        x = F.tanh(self.v_fc2(x))
+        value = self.v_fc3(x)
 
-        x = self.v_fc2(x)
-        x = F.tanh(x)
-
-        x = self.v_fc3(x)
-        value = x
-
-        x = self.a_fc1(inputs)
-        x = F.tanh(x)
-
-        x = self.a_fc2(x)
-        x = F.tanh(x)
-
-        return value, x, states
+        # this x will later be fed into self.dist to compute action probabilities
+        x = F.tanh(self.a_fc1(inputs))
+        x = F.tanh(self.a_fc2(x))
+        return value, x
 
 
 # bipedal walker
@@ -242,42 +236,3 @@ class BPW_MLPPolicy(FFPolicy):
 
         return value, x, states
 
-
-'''
-class MetaNet(nn.Module):
-    def __init__(self, input_dim, action_space):
-        super(MetaNet, self).__init__()
-        self.input_dim = input_dim
-        self.hidden_dim = 48
-        self.action_space = action_space
-
-        self.lstm = nn.LSTMCell(self.input_dim, self.hidden_dim)
-        self.value = nn.Linear(self.hidden_dim, 1)
-
-        # NOTE: assuming action_space is of discrete class
-        self.policy = nn.Linear(self.hidden_dim, self.action_space.n)
-        self.sfm = nn.Softmax()
-        self.logsfm = nn.LogSoftmax()
-
-        self.train()
-
-    def forward(self, inputs):
-        # inputs: x - observation (current_observation, last reward, last action one-hot, t)
-        # hx - hidden state
-        # cx - cell state
-
-        x, (hx,cx) = inputs    
-        # TODO: implement any encoding of input (x) here
-
-        x = x.view(1, self.input_dim)
-        hx, cx = self.lstm(x, (hx,cx))    
-        x = hx
-
-        val = self.value(x)
-        pol = self.policy(x)
-        action_probs = self.sfm(pol)
-        action_log_probs = self.logsfm(pol)
-
-        return x, 
-
-'''

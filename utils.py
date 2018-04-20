@@ -2,7 +2,10 @@ import torch
 import torch.nn as nn
 
 
-# Necessary for my KFAC implementation.
+def save_checkpoint(state, filename):
+    # save model and learning optimizer state dictionaries
+    torch.save(state, filename)
+
 class AddBias(nn.Module):
     def __init__(self, bias):
         super(AddBias, self).__init__()
