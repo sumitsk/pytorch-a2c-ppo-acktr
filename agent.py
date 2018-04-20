@@ -189,7 +189,7 @@ class Agent(object):
             self.log_to_tensorboard(rollout)
     
     def log_to_tensorboard(self, rollout):
-        self.writer.add_scalar('data/training_reward', 
+        self.writer.add_scalar('training_reward_'+self.args.velocity_dir, 
             np.sum(rollout.rewards), self.episodes)        
 
     def train(self):
