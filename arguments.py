@@ -58,12 +58,12 @@ def get_args():
     parser.add_argument(
             '--gamma',
             type=float,
-            default=0.99,
+            default=0.995,
             help='discount factor for rewards (default: 0.99)')   
     parser.add_argument(
             '--tau',
             type=float, 
-            default=0.95,
+            default=0.98,
             help='gae parameter (default: 0.95)')
     parser.add_argument(
             '--entropy-coef', 
@@ -112,8 +112,8 @@ def get_args():
             default=2018,
             help='random seed (default: 2018)')
     parser.add_argument(
-            '--no-cuda', 
-            action='store_true', 
+            '--cuda', 
+            action='store_false', 
             help='disables CUDA training')
     parser.add_argument(
             '--recurrent-policy', 
@@ -159,7 +159,7 @@ def get_args():
     args.num_updates = int(args.num_updates)
     args.use_gae = not args.no_gae
     args.use_adam = not args.no_adam
-    args.cuda = not args.no_cuda and torch.cuda.is_available()
+    args.cuda = args.cuda and torch.cuda.is_available()
     args.vis = not args.no_vis
     args.save_dir += args.velocity_dir + '/'
     return args

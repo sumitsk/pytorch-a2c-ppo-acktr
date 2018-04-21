@@ -3,7 +3,6 @@ import os
 import time
 import numpy as np
 import pdb
-import datetime
 
 #import gym
 import torch
@@ -39,13 +38,10 @@ Tensor = FloatTensor
 class Agent(object):
     def __init__(self, args):
         self.args = args
-        #self.env = gym.make(self.args.env_name)
-        #self.env = normalize(MountainCarEnv())
-        #self.env = normalize(CartpoleEnv())
-        self.env = normalize(AntEnv())
+        env = AntEnv()
         # set the target velocity direction (for learning sub-policies)
-        self.env.velocity_dir = self.args.velocity_dir      
-        
+        env.velocity_dir = self.args.velocity_dir      
+        self.env = normalize(env) 
         self.reset_env()
 
         self.obs_shape = self.env.observation_space.shape
@@ -60,7 +56,7 @@ class Agent(object):
         # concatenation of all episodes' rollout
         self.rollouts = RolloutStorage()    
         # this directory is used for tensorboardX only
-        self.writer = SummaryWriter('log_directory')
+        self.writer = SummaryWriter('log_directory/'+self.args.velocity_dir)
 
         self.episodes = 0
         self.episode_steps = []
@@ -136,8 +132,9 @@ class Agent(object):
         while not done:
             step += 1
             value, action, action_logprob = self.actor_critic.act(
-                Variable(self.current_obs, volatile=True)
-                )
+                                Variable(self.current_obs, volatile=True),
+                                deterministic=test==True
+                                )
 
             cpu_actions = action.data.squeeze(1).cpu().numpy()[0]
             next_obs, reward, done, info = self.env.step(cpu_actions)
@@ -193,7 +190,7 @@ class Agent(object):
             self.log_to_tensorboard(rollout)
     
     def log_to_tensorboard(self, rollout):
-        self.writer.add_scalar('training_reward_'+self.args.velocity_dir, 
+        self.writer.add_scalar('reward_'+self.args.velocity_dir, 
             np.sum(rollout.rewards), self.episodes)        
 
     def train(self):
