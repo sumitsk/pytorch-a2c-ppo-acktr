@@ -104,15 +104,16 @@ class Agent(object):
 
     def load(self, filename):
         # load models and optimizer
-        '''
+        #'''
         load_device = 'cuda:0'
-        target_device = 'cuda:0' if use_cuda else 'cpu'
+        target_device = 'cpu'
+        #target_device = 'cuda:0' if use_cuda else 'cpu'
         '''
         load_device = 'cpu'
         target_device = 'cpu'
-
+        '''  
         checkpoint = torch.load(filename, map_location={load_device: target_device})
-        self.main.load_state_dict(checkpoint['state_dict'])
+        self.actor_critic.load_state_dict(checkpoint['state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer'])
         episode_number = checkpoint['episode_number']
         return episode_number
@@ -127,7 +128,7 @@ class Agent(object):
 
 
     # rollout one episode
-    def rollout_episode(self):
+    def rollout_episode(self, test=False, render=False):
         rollout = RolloutStorage()
         self.reset_env()
         step = 0
@@ -142,6 +143,8 @@ class Agent(object):
             next_obs, reward, done, info = self.env.step(cpu_actions)
             next_obs = Tensor(next_obs).view(1, -1)
             
+            if render:
+            	self.env.render()
         
             # a constant reward scaling factor can be introduced to stabilise training and prevent large value losses
             # reward = reward * 0.01
@@ -151,14 +154,15 @@ class Agent(object):
                            value.data, action_logprob.data, mask)
             self.current_obs.copy_(next_obs)
         
-        next_value = self.actor_critic.forward(
-                        Variable(rollout.observations[-1], volatile=True)
-                        )[0].data
-        rollout.compute_returns(next_value, self.args.use_gae,
-                                self.args.gamma, self.args.tau)
+        if not test:
+	        next_value = self.actor_critic.forward(
+	                        Variable(rollout.observations[-1], volatile=True)
+	                        )[0].data
+	        rollout.compute_returns(next_value, self.args.use_gae,
+	                                self.args.gamma, self.args.tau)
 
-        #print ('steps:',step)
-        self.episode_steps.append(step)
+	        self.episode_steps.append(step)
+	        
         return rollout
         
     def pre_update(self):
@@ -240,3 +244,9 @@ class Agent(object):
                 except IOError:
                     pass
             '''
+
+    def test(self, filename, num_episodes=100):
+    	self.load(filename)
+    	for i in range(num_episodes):
+    		rollout = self.rollout_episode(test=True, render=True)
+    		print('Episode %d Reward: %4f' %(i+1, np.sum(rollout.rewards)))

@@ -81,6 +81,13 @@ def get_args():
             default=0.5,
             help='max norm of gradients (default: 0.5)')
     
+    parser.add_argument(
+            '--model-filename',
+            default='posx/AntEnv.pt')
+    parser.add_argument(
+            '--test',
+            action='store_true',
+            help='use to test the model')
 
     parser.add_argument(
             '--log-dir', 
