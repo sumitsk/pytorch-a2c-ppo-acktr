@@ -14,7 +14,7 @@ from kfac import KFACOptimizer
 from model import CNNPolicy, MLPPolicy
 from storage import RolloutStorage
 from utils import save_checkpoint
-from algo import update
+from algo import update,meta_update
 from arguments import get_args
 from visualize import visdom_plot
 
@@ -23,8 +23,9 @@ from rllab.envs.normalized_env import normalize
 from rllab.envs.mujoco.ant_env import AntEnv
 #from rllab.envs.box2d.cartpole_env import CartpoleEnv
 #from rllab.envs.box2d.mountain_car_env import MountainCarEnv
-
 from tensorboardX import SummaryWriter
+from adam_new import Adam_Custom
+from copy import deepcopy
 
 # if using gpu
 # UGLY WAY TO CALL ARGUMENT IN EVERY FILE
@@ -89,6 +90,7 @@ class Agent(object):
         elif self.args.use_adam:
             optimizer = optim.Adam(self.actor_critic.parameters(),
                                    self.args.lr)
+            self.meta_optimizer = Adam_Custom(self.actor_critic.parameters(), lr=self.args.lr)
         else:
             optimizer = optim.RMSprop(self.actor_critic.parameters(),
                                       self.args.lr,
@@ -250,3 +252,172 @@ class Agent(object):
     	for i in range(num_episodes):
     		rollout = self.rollout_episode(test=True, render=True)
     		print('Episode %d Reward: %4f' %(i+1, np.sum(rollout.rewards)))
+
+
+    def train_maml(self):
+
+        start_time = time.time()
+        theta_list = []
+        num_tasks = 1000
+        sample_size = 10
+        task_list = []
+
+        #Task distribution in task_list
+        for i in range(num_tasks):
+            friction = np.random.randint(low=1, high=10, size=3).astype('float32')/10.
+            friction_1 = np.random.uniform(low=0.1, high=0.8, size=3).astype('float32')
+            size1 = np.random.uniform(low=0.5*0.25,high=1.5*0.25,size=1).astype('float32')
+            size_ankle = np.random.uniform(low=0.5*0.08,high=1.5*0.08,size=1).astype('float32')
+            task = {'default/geom': ['', 'friction', '{0:.1f} {1:.1f} {2:.1f}'.format(
+                friction[0],
+                friction[1],
+                friction[2])],
+            'worldbody/body/geom': [[['name', 'torso_geom'], ['type', 'sphere']], 
+                                             'size',
+                                             '{0:.2f}'.format(size1[0])],
+            'worldbody/body/body/body/body/geom': [[['name', 'left_ankle_geom'], ['type', 'capsule']], 
+                                             'size',
+                                             '{0:.2f}'.format(size_ankle[0])],
+            'worldbody/body/body/body/body/geom': [[['name', 'right_ankle_geom'], ['type', 'capsule']], 
+                                     'size',
+                                     '{0:.2f}'.format(size_ankle[0])],
+            'worldbody/body/body/body/body/geom': [[['name', 'third_ankle_geom'], ['type', 'capsule']], 
+                                     'size',
+                                     '{0:.2f}'.format(size_ankle[0])],
+            'worldbody/body/body/body/body/geom': [[['name', 'fourth_ankle_geom'], ['type', 'capsule']], 
+                                     'size',
+                                     '{0:.2f}'.format(size_ankle[0])]}          
+            # task2 = {'option': ['gravity', '{0:.2f} {1:.2f} {2:.2f}'.format(0,0,gravity_z)]}
+            task_list.append(task)
+
+        for j in range(self.args.num_updates):
+
+            sample_indexes = np.random.randint(0, num_tasks, size=sample_size)
+            # Get the theta
+            if j == 0:
+                theta = self.get_weights()
+
+            # Inner loop
+            # First gradient
+            for i, sample_index in enumerate(sample_indexes):
+
+                # Get the task
+                task = task_list[sample_index]
+                # env = self.envs.venv.envs[0]
+
+                _tag_names = []
+                _tag_identifiers = []
+                _attributes = []
+                _values = []
+
+                # Change the task variables in the environment
+                for k in task.keys():
+                    v = task[k]
+                    _tag_names.append(k)
+                    _tag_identifiers.append(v[0])
+                    _attributes.append(v[1])
+                    _values.append(v[2])
+
+                # env.env.env.my_init(_tag_names, \
+                #                     _tag_identifiers,
+                #                     _attributes, \
+                #                     _values,
+                #                     None)
+
+                # Set the model weights to theta before training
+                self.set_weights(theta)
+
+                # Run normal update on each of the theta_i
+                self.collect_samples(self.args.update_frequency)
+                self.pre_update()
+                dist_entropy, value_loss, action_loss = update(self)
+                self.post_update()
+
+                if j == 0:
+                    theta_list.append(self.get_weights())
+                else:
+                    theta_list[i] = self.get_weights()
+
+            # Second gradiet
+            theta_copy = deepcopy(theta)
+            for k1, sample_index in enumerate(sample_indexes):
+
+                # Get the task
+                task = task_list[sample_index]
+                # env = self.envs.venv.envs[0]
+
+                _tag_names = []
+                _tag_identifiers = []
+                _attributes = []
+                _values = []
+
+                for k in task.keys():
+                    v = task[k]
+                    _tag_names.append(k)
+                    _tag_identifiers.append(v[0])
+                    _attributes.append(v[1])
+                    _values.append(v[2])
+
+                # env.env.env.my_init(_tag_names, \
+                #                     _tag_identifiers,
+                #                     _attributes, \
+                #                     _values,
+                #                     None)
+
+                # Run meta update 
+                self.collect_samples(self.args.update_frequency)
+                self.pre_update()
+                dist_entropy, value_loss, action_loss = meta_update(self,theta_list[k1],theta_copy)
+                self.post_update()
+
+                theta = self.get_weights()
+
+
+            print('\nEpisode: %d' %(self.episodes))
+            print('Steps: %d' %(self.episode_steps[-1]))
+            print('Reward: %4f' %(self.train_rewards[-1]))
+            print('Value Loss: %4f' %(value_loss))
+            print('Action Loss: %4f' %(action_loss))
+            print('Dist Entropy: %4f' %(dist_entropy))
+
+            #'''
+            if j % self.args.save_interval == 0 and self.args.save_dir != "":
+                episode_num = j * self.args.update_frequency
+                filename = self.args.save_dir + self.args.env_name + '_' + \
+                           str(episode_num) + '.pt'
+                self.save(episode_num, filename)
+
+    def meta_test(self, filename, num_episodes=100):
+        self.load(filename)
+
+        #Do a few gradient updates
+        num_grad_updates = 10
+        start = time.time()
+        j = 0
+        while j < num_grad_updates:
+            j += 1
+            self.collect_samples(self.args.update_frequency)
+            self.pre_update()
+            dist_entropy, value_loss, action_loss = update(self)
+            self.post_update()
+
+        for i in range(num_episodes):
+            rollout = self.rollout_episode(test=True, render=True)
+            print('Episode %d Reward: %4f' %(i+1, np.sum(rollout.rewards)))
+
+            #Write the rendering env stuff here
+
+    def get_weights(self):
+        # state_dicts = {'id': id,
+        #              'state_dict': self.actor_critic.state_dict(),
+        #              }
+
+        return self.actor_critic.state_dict()
+
+    def set_weights(self, state_dicts):
+        
+        checkpoint = state_dicts
+
+        self.actor_critic.load_state_dict(checkpoint)
+        # self.optimizer.load_state_dict(checkpoint['optimizer'])
+

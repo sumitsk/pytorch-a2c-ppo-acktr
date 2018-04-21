@@ -133,6 +133,7 @@ def visdom_plot(viz, win, folder, game, name, bin_size=100, smooth=1):
     plt.title(game)
     plt.legend(loc=4)
     plt.show()
+    plt.savefig('maml_figures/test.png')
     plt.draw()
 
     image = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
