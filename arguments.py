@@ -104,8 +104,8 @@ def get_args():
 
     parser.add_argument(
             '--log-dir', 
-            default='/tmp/gym/',
-            help='directory to save agent logs (default: /tmp/gym)')
+            default='./log_directory',
+            help='tensorboard log directory')
     parser.add_argument(
             '--save-dir', 
             default='./trained_models/',
@@ -123,24 +123,11 @@ def get_args():
             '--seed', 
             type=int, 
             default=10,
-            help='random seed (default: 2018)')
+            help='random seed (default: 10)')
     parser.add_argument(
             '--cuda', 
             action='store_true', 
             help='disables CUDA training')
-    parser.add_argument(
-            '--recurrent-policy', 
-            action='store_true', 
-            help='use a recurrent policy')
-    parser.add_argument(
-            '--no-vis', 
-            action='store_true', 
-            help='disables visdom visualization')
-    parser.add_argument(
-            '--port', 
-            type=int, 
-            default=8097,
-            help='port to run the server on (default: 8097)')
     parser.add_argument(
             '--eps', 
             type=float, 
@@ -152,27 +139,20 @@ def get_args():
             default=0.99,
             help='RMSprop optimizer apha (default: 0.99)')
     parser.add_argument(
-            '--log-interval', 
-            type=int, 
-            default=10,
-            help='log interval, one log per ... updates (default: 10)')
-    parser.add_argument(
             '--save-interval', 
             type=int, 
-            default=250,
+            default=100,
             help='save interval, one save per ... updates (default: 100)')
     parser.add_argument(
-            '--vis-interval', 
-            type=int, 
-            default=100,
-            help='vis interval, one log per ... updates (default: 100)')
+            '--eval-interval',
+            type=int,
+            default=25,
+            help='evaluate model every ... updates')
+    
     args = parser.parse_args()
-
-
     args.num_updates = int(args.num_updates)
     args.use_gae = not args.no_gae
     args.use_adam = not args.no_adam
     args.cuda = args.cuda and torch.cuda.is_available()
-    args.vis = not args.no_vis
     args.save_dir += args.velocity_dir + '/'
     return args

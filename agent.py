@@ -4,7 +4,6 @@ import time
 import numpy as np
 import pdb
 
-#import gym
 import torch
 import torch.optim as optim
 from torch.autograd import Variable
@@ -18,9 +17,6 @@ from arguments import get_args
 
 #import rllab.misc.logger as logger
 from rllab.envs.normalized_env import normalize
-
-#from rllab.envs.box2d.cartpole_env import CartpoleEnv
-#from rllab.envs.box2d.mountain_car_env import MountainCarEnv
 
 from tensorboardX import SummaryWriter
 
@@ -50,7 +46,8 @@ class Agent(object):
 
         elif self.args.env_name == 'swimmer':
             from rllab.envs.mujoco.swimmer_env import SwimmerEnv
-            env = SwimmerEnv()   
+            env = SwimmerEnv()  
+            env.velocity_dir = self.args.velocity_dir
         else:
             raise NotImplementedError    
 
@@ -218,6 +215,7 @@ class Agent(object):
                            str(episode_num) + '.pt'
                 self.save(episode_num, filename)
 
+            if j % self.args.eval_interval == 0:
                 test_reward_mean, test_reward_std = self.eval_model(num_episodes=20)
                 self.writer.add_scalar('test_reward_'+self.args.velocity_dir,
                                         test_reward_mean, self.episodes)
