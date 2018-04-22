@@ -126,7 +126,7 @@ def get_args():
             help='random seed (default: 2018)')
     parser.add_argument(
             '--cuda', 
-            action='store_false', 
+            action='store_true', 
             help='disables CUDA training')
     parser.add_argument(
             '--recurrent-policy', 
