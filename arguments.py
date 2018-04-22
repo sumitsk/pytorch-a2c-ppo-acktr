@@ -5,12 +5,20 @@ def get_args():
     parser = argparse.ArgumentParser(description='RL')
     parser.add_argument(
             '--env-name',
-            default='AntEnv')
+            default='ant')
     parser.add_argument(
             "--velocity-dir",
             default='posx',
             help='set one from: posx | posy | negx | negy ')
-    
+    parser.add_argument(
+            '--use-gym-obs',
+            action='store_true',
+            help='for using gym observation in rllab env')
+    parser.add_argument(
+            '--use-gym-reward',
+            action='store_true',
+            help='for using gym reward in rllab env')
+
     # HYPERPARAMETERS
     parser.add_argument(
             '--algo', 
@@ -32,6 +40,11 @@ def get_args():
             type=float, 
             default=0.2,
             help='ppo clip parameter (default: 0.2)')
+    parser.add_argument(
+            '--reward-scale',
+            type=float,
+            default=1.0,
+            help='reward scaling factor')
 
     parser.add_argument(
             '--num-updates', 
@@ -41,7 +54,7 @@ def get_args():
     parser.add_argument(
             '--update-frequency', 
             type=int, 
-            default=1,
+            default=2,
             help='update model after every ... episodes')
     parser.add_argument(
             '--episode-max-length',
@@ -53,8 +66,8 @@ def get_args():
     parser.add_argument(
             '--lr', 
             type=float, 
-            default=1e-4,
-            help='learning rate (default: 7e-4)')    
+            default=3e-4,
+            help='learning rate (default: 3e-4)')    
     parser.add_argument(
             '--gamma',
             type=float,
@@ -109,7 +122,7 @@ def get_args():
     parser.add_argument(
             '--seed', 
             type=int, 
-            default=2018,
+            default=10,
             help='random seed (default: 2018)')
     parser.add_argument(
             '--cuda', 
@@ -146,7 +159,7 @@ def get_args():
     parser.add_argument(
             '--save-interval', 
             type=int, 
-            default=500,
+            default=250,
             help='save interval, one save per ... updates (default: 100)')
     parser.add_argument(
             '--vis-interval', 

@@ -15,11 +15,10 @@ from storage import RolloutStorage
 from utils import save_checkpoint
 from algo import update
 from arguments import get_args
-from visualize import visdom_plot
 
 #import rllab.misc.logger as logger
 from rllab.envs.normalized_env import normalize
-from rllab.envs.mujoco.ant_env import AntEnv
+
 #from rllab.envs.box2d.cartpole_env import CartpoleEnv
 #from rllab.envs.box2d.mountain_car_env import MountainCarEnv
 
@@ -38,9 +37,23 @@ Tensor = FloatTensor
 class Agent(object):
     def __init__(self, args):
         self.args = args
-        env = AntEnv()
-        # set the target velocity direction (for learning sub-policies)
-        env.velocity_dir = self.args.velocity_dir      
+
+        if self.args.env_name == 'ant':
+            from rllab.envs.mujoco.ant_env import AntEnv
+            env = AntEnv()
+            # set the target velocity direction (for learning sub-policies)
+            env.velocity_dir = self.args.velocity_dir
+            # use gym environment observation 
+            env.use_gym_obs = self.args.use_gym_obs
+            # use gym environment reward
+            env.use_gym_reward = self.args.use_gym_reward
+
+        elif self.args.env_name == 'swimmer':
+            from rllab.envs.mujoco.swimmer_env import SwimmerEnv
+            env = SwimmerEnv()   
+        else:
+            raise NotImplementedError    
+
         self.env = normalize(env) 
         self.reset_env()
 
@@ -61,22 +74,9 @@ class Agent(object):
         self.episodes = 0
         self.episode_steps = []
         self.train_rewards = []
-
-        if self.args.vis:
-            from visdom import Visdom
-            self.viz = Visdom(port=args.port)
-            self.win = None
         
     def select_network(self):
-        if len(self.env.observation_space.shape) == 3:
-            actor_critic = CNNPolicy(self.obs_shape[0], 
-                                     self.env.action_space,
-                                     self.args.recurrent_policy)
-        else:
-            assert not self.args.recurrent_policy, \
-                "Recurrent policy is not implemented for the MLP controller"
-            actor_critic = MLPPolicy(self.obs_shape[0], 
-                                     self.env.action_space)
+        actor_critic = MLPPolicy(self.obs_shape[0], self.env.action_space)
         return actor_critic
 
     def select_optimizer(self):
@@ -144,10 +144,10 @@ class Agent(object):
             	self.env.render()
         
             # a constant reward scaling factor can be introduced to stabilise training and prevent large value losses
-            # reward = reward * 0.01
+            r = reward * self.args.reward_scale
             done = done or step == self.args.episode_max_length
             mask = 1.0 if not done else 0.0
-            rollout.insert(self.current_obs, action.data, reward, 
+            rollout.insert(self.current_obs, action.data, r, 
                            value.data, action_logprob.data, mask)
             self.current_obs.copy_(next_obs)
         
@@ -190,7 +190,7 @@ class Agent(object):
             self.log_to_tensorboard(rollout)
     
     def log_to_tensorboard(self, rollout):
-        self.writer.add_scalar('reward_'+self.args.velocity_dir, 
+        self.writer.add_scalar('train_reward_'+self.args.velocity_dir, 
             np.sum(rollout.rewards), self.episodes)        
 
     def train(self):
@@ -212,35 +212,23 @@ class Agent(object):
             print('Action Loss: %4f' %(action_loss))
             print('Dist Entropy: %4f' %(dist_entropy))
 
-            #'''
             if j % self.args.save_interval == 0 and self.args.save_dir != "":
                 episode_num = j * self.args.update_frequency
                 filename = self.args.save_dir + self.args.env_name + '_' + \
                            str(episode_num) + '.pt'
                 self.save(episode_num, filename)
-            
-            '''
-            if j % self.args.log_interval == 0:
-                end = time.time()
-                
-                total_num_steps = (j + 1) * self.args.num_processes * self.args.num_steps
-                print("Updates {}, num timesteps {}, FPS {}, mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}, entropy {:.5f}, value loss {:.5f}, policy loss {:.5f}".
-                    format(j, total_num_steps,
-                           int(total_num_steps / (end - start)),
-                           self.final_rewards.mean(),
-                           self.final_rewards.median(),
-                           self.final_rewards.min(),
-                           self.final_rewards.max(), dist_entropy.data[0],
-                           value_loss.data[0], action_loss.data[0]))
-        
-            if self.args.vis and j % self.args.vis_interval == 0:
-                try:
-                    # Sometimes monitor doesn't properly flush the outputs
-                    self.win = visdom_plot(self.viz, self.win, self.args.log_dir,
-                        'Ant-v1_rllab', self.args.algo)
-                except IOError:
-                    pass
-            '''
+
+                test_reward_mean, test_reward_std = self.eval_model(num_episodes=20)
+                self.writer.add_scalar('test_reward_'+self.args.velocity_dir,
+                                        test_reward_mean, self.episodes)
+
+    def eval_model(self, num_episodes):
+        rewards = []
+        for i in range(num_episodes):
+            rollout = self.rollout_episode(test=True, render=False)
+            rewards.append(np.sum(rollout.rewards))
+        return np.mean(rewards), np.std(rewards)            
+
 
     def test(self, filename, num_episodes=100):
     	self.load(filename)

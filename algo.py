@@ -20,12 +20,8 @@ def ppo_update(agent):
     advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
 
     for e in range(agent.args.ppo_epoch):
-        if agent.args.recurrent_policy:
-            data_generator = agent.rollouts.recurrent_generator(
-                                    advantages,
-                                    agent.args.num_mini_batch)
-        else:
-            data_generator = agent.rollouts.feed_forward_generator(
+        # only feed_forward_generator supported for now
+        data_generator = agent.rollouts.feed_forward_generator(
                                     advantages,
                                     agent.args.num_mini_batch)
 
@@ -38,16 +34,6 @@ def ppo_update(agent):
                                         Variable(observations_batch),
                                         Variable(actions_batch)
                                         )
-
-            # pdb.set_trace()
-            '''
-            print('---------------')
-            print(return_batch.numpy().squeeze(1))
-            print(values.data.numpy().squeeze(1))        
-            #print(diff)
-            
-            pdb.set_trace()
-            #'''
 
             adv_targ = Variable(adv_targ)
             ratio = torch.exp(action_log_probs - Variable(old_action_log_probs_batch))
@@ -66,15 +52,11 @@ def ppo_update(agent):
 
 
 def a2c_update(agent):
-    #pdb.set_trace()
     values, action_log_probs, dist_entropy = \
             agent.actor_critic.evaluate_actions(
                 Variable(agent.rollouts.observations.view(-1, *agent.obs_shape)),
                 Variable(agent.rollouts.actions.view(-1, agent.action_shape))
                 )
-
-    #values = values.view(agent.args.num_steps, agent.args.num_processes, 1)
-    #action_log_probs = action_log_probs.view(agent.args.num_steps, agent.args.num_processes, 1)
 
     advantages = Variable(agent.rollouts.returns) - values
     value_loss = advantages.pow(2).mean()
@@ -92,15 +74,11 @@ def a2c_update(agent):
 
 
 def acktr_update(agent):
-    #pdb.set_trace()
     values, action_log_probs, dist_entropy = \
             agent.actor_critic.evaluate_actions(
                 Variable(agent.rollouts.observations.view(-1, *agent.obs_shape)),
                 Variable(agent.rollouts.actions.view(-1, agent.action_shape))
                 )
-
-    #values = values.view(agent.args.num_steps, agent.args.num_processes, 1)
-    #action_log_probs = action_log_probs.view(agent.args.num_steps, agent.args.num_processes, 1)
 
     advantages = Variable(agent.rollouts.returns) - values
     value_loss = advantages.pow(2).mean()
