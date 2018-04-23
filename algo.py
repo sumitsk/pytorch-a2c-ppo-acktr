@@ -118,14 +118,10 @@ def meta_update(agent,theta_loss,theta_grad):
     advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
 
     for e in range(agent.args.ppo_epoch):
-        if agent.args.recurrent_policy:
-            data_generator = agent.rollouts.recurrent_generator(
-                                    advantages,
-                                    agent.args.num_mini_batch)
-        else:
-            data_generator = agent.rollouts.feed_forward_generator(
-                                    advantages,
-                                    agent.args.num_mini_batch)
+        
+        data_generator = agent.rollouts.feed_forward_generator(
+                                advantages,
+                                agent.args.num_mini_batch)
 
         for sample in data_generator:
             #Set the weights as theta_task for the forward pass
