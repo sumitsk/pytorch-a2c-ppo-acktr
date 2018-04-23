@@ -60,7 +60,7 @@ class Agent(object):
         else:
             raise NotImplementedError    
 
-        self.env = self.env_unnorm 
+        self.env = normalize(env)
         self.reset_env()
 
         self.obs_shape = self.env.observation_space.shape
