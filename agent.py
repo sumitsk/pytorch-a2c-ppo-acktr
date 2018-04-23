@@ -4,7 +4,6 @@ import time
 import numpy as np
 import pdb
 import datetime
-
 #import gym
 import torch
 import torch.optim as optim
@@ -16,7 +15,6 @@ from storage import RolloutStorage
 from utils import save_checkpoint
 from algo import update,meta_update
 from arguments import get_args
-from visualize import visdom_plot
 
 #import rllab.misc.logger as logger
 from rllab.envs.normalized_env import normalize
@@ -40,13 +38,25 @@ Tensor = FloatTensor
 class Agent(object):
     def __init__(self, args):
         self.args = args
-        #self.env = gym.make(self.args.env_name)
-        #self.env = normalize(MountainCarEnv())
-        #self.env = normalize(CartpoleEnv())
-        self.env = normalize(AntEnv())
-        # set the target velocity direction (for learning sub-policies)
-        self.env.velocity_dir = self.args.velocity_dir      
-        
+
+        if self.args.env_name == 'ant':
+            from rllab.envs.mujoco.ant_env import AntEnv
+            env = AntEnv()
+            # set the target velocity direction (for learning sub-policies)
+            env.velocity_dir = self.args.velocity_dir
+            # use gym environment observation 
+            env.use_gym_obs = self.args.use_gym_obs
+            # use gym environment reward
+            env.use_gym_reward = self.args.use_gym_reward
+
+        elif self.args.env_name == 'swimmer':
+            from rllab.envs.mujoco.swimmer_env import SwimmerEnv
+            env = SwimmerEnv()  
+            env.velocity_dir = self.args.velocity_dir
+        else:
+            raise NotImplementedError    
+
+        self.env = normalize(env) 
         self.reset_env()
 
         self.obs_shape = self.env.observation_space.shape
@@ -61,27 +71,14 @@ class Agent(object):
         # concatenation of all episodes' rollout
         self.rollouts = RolloutStorage()    
         # this directory is used for tensorboardX only
-        self.writer = SummaryWriter('log_directory')
+        self.writer = SummaryWriter('log_directory/'+self.args.velocity_dir)
 
         self.episodes = 0
         self.episode_steps = []
         self.train_rewards = []
-
-        if self.args.vis:
-            from visdom import Visdom
-            self.viz = Visdom(port=args.port)
-            self.win = None
         
     def select_network(self):
-        if len(self.env.observation_space.shape) == 3:
-            actor_critic = CNNPolicy(self.obs_shape[0], 
-                                     self.env.action_space,
-                                     self.args.recurrent_policy)
-        else:
-            assert not self.args.recurrent_policy, \
-                "Recurrent policy is not implemented for the MLP controller"
-            actor_critic = MLPPolicy(self.obs_shape[0], 
-                                     self.env.action_space)
+        actor_critic = MLPPolicy(self.obs_shape[0], self.env.action_space)
         return actor_critic
 
     def select_optimizer(self):
@@ -90,7 +87,6 @@ class Agent(object):
         elif self.args.use_adam:
             optimizer = optim.Adam(self.actor_critic.parameters(),
                                    self.args.lr)
-            self.meta_optimizer = Adam_Custom(self.actor_critic.parameters(), lr=self.args.lr)
         else:
             optimizer = optim.RMSprop(self.actor_critic.parameters(),
                                       self.args.lr,
@@ -138,33 +134,34 @@ class Agent(object):
         while not done:
             step += 1
             value, action, action_logprob = self.actor_critic.act(
-                Variable(self.current_obs, volatile=True)
-                )
+                                Variable(self.current_obs, volatile=True),
+                                deterministic=test==True
+                                )
 
             cpu_actions = action.data.squeeze(1).cpu().numpy()[0]
             next_obs, reward, done, info = self.env.step(cpu_actions)
             next_obs = Tensor(next_obs).view(1, -1)
             
             if render:
-            	self.env.render()
+                self.env.render()
         
             # a constant reward scaling factor can be introduced to stabilise training and prevent large value losses
-            # reward = reward * 0.01
+            r = reward * self.args.reward_scale
             done = done or step == self.args.episode_max_length
             mask = 1.0 if not done else 0.0
-            rollout.insert(self.current_obs, action.data, reward, 
+            rollout.insert(self.current_obs, action.data, r, 
                            value.data, action_logprob.data, mask)
             self.current_obs.copy_(next_obs)
         
         if not test:
-	        next_value = self.actor_critic.forward(
-	                        Variable(rollout.observations[-1], volatile=True)
-	                        )[0].data
-	        rollout.compute_returns(next_value, self.args.use_gae,
-	                                self.args.gamma, self.args.tau)
+            next_value = self.actor_critic.forward(
+                            Variable(rollout.observations[-1], volatile=True)
+                            )[0].data
+            rollout.compute_returns(next_value, self.args.use_gae,
+                                    self.args.gamma, self.args.tau)
 
-	        self.episode_steps.append(step)
-	        
+            self.episode_steps.append(step)
+            
         return rollout
         
     def pre_update(self):
@@ -195,7 +192,7 @@ class Agent(object):
             self.log_to_tensorboard(rollout)
     
     def log_to_tensorboard(self, rollout):
-        self.writer.add_scalar('training_reward_'+self.args.velocity_dir, 
+        self.writer.add_scalar('train_reward_'+self.args.velocity_dir, 
             np.sum(rollout.rewards), self.episodes)        
 
     def train(self):
@@ -217,41 +214,30 @@ class Agent(object):
             print('Action Loss: %4f' %(action_loss))
             print('Dist Entropy: %4f' %(dist_entropy))
 
-            #'''
             if j % self.args.save_interval == 0 and self.args.save_dir != "":
                 episode_num = j * self.args.update_frequency
                 filename = self.args.save_dir + self.args.env_name + '_' + \
                            str(episode_num) + '.pt'
                 self.save(episode_num, filename)
-            
-            '''
-            if j % self.args.log_interval == 0:
-                end = time.time()
-                
-                total_num_steps = (j + 1) * self.args.num_processes * self.args.num_steps
-                print("Updates {}, num timesteps {}, FPS {}, mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}, entropy {:.5f}, value loss {:.5f}, policy loss {:.5f}".
-                    format(j, total_num_steps,
-                           int(total_num_steps / (end - start)),
-                           self.final_rewards.mean(),
-                           self.final_rewards.median(),
-                           self.final_rewards.min(),
-                           self.final_rewards.max(), dist_entropy.data[0],
-                           value_loss.data[0], action_loss.data[0]))
-        
-            if self.args.vis and j % self.args.vis_interval == 0:
-                try:
-                    # Sometimes monitor doesn't properly flush the outputs
-                    self.win = visdom_plot(self.viz, self.win, self.args.log_dir,
-                        'Ant-v1_rllab', self.args.algo)
-                except IOError:
-                    pass
-            '''
+
+            if j % self.args.eval_interval == 0:
+                test_reward_mean, test_reward_std = self.eval_model(num_episodes=20)
+                self.writer.add_scalar('test_reward_'+self.args.velocity_dir,
+                                        test_reward_mean, self.episodes)
+
+    def eval_model(self, num_episodes):
+        rewards = []
+        for i in range(num_episodes):
+            rollout = self.rollout_episode(test=True, render=False)
+            rewards.append(np.sum(rollout.rewards))
+        return np.mean(rewards), np.std(rewards)            
+
 
     def test(self, filename, num_episodes=100):
-    	self.load(filename)
-    	for i in range(num_episodes):
-    		rollout = self.rollout_episode(test=True, render=True)
-    		print('Episode %d Reward: %4f' %(i+1, np.sum(rollout.rewards)))
+        self.load(filename)
+        for i in range(num_episodes):
+            rollout = self.rollout_episode(test=True, render=True)
+            print('Episode %d Reward: %4f' %(i+1, np.sum(rollout.rewards)))
 
 
     def train_maml(self):
@@ -290,7 +276,7 @@ class Agent(object):
             # task2 = {'option': ['gravity', '{0:.2f} {1:.2f} {2:.2f}'.format(0,0,gravity_z)]}
             task_list.append(task)
 
-        for j in range(self.args.num_updates):
+        for j in range(int(self.args.num_updates/10)):
 
             sample_indexes = np.random.randint(0, num_tasks, size=sample_size)
             # Get the theta
@@ -318,11 +304,10 @@ class Agent(object):
                     _attributes.append(v[1])
                     _values.append(v[2])
 
-                # env.env.env.my_init(_tag_names, \
-                #                     _tag_identifiers,
-                #                     _attributes, \
-                #                     _values,
-                #                     None)
+                self.env_unnorm.change_model(tag_names=_tag_names, 
+                 tag_identifiers=_tag_identifiers, 
+                 attributes=_attributes,
+                 values=_values)
 
                 # Set the model weights to theta before training
                 self.set_weights(theta)
@@ -358,11 +343,10 @@ class Agent(object):
                     _attributes.append(v[1])
                     _values.append(v[2])
 
-                # env.env.env.my_init(_tag_names, \
-                #                     _tag_identifiers,
-                #                     _attributes, \
-                #                     _values,
-                #                     None)
+                self.env_unnorm.change_model(tag_names=_tag_names, 
+                 tag_identifiers=_tag_identifiers, 
+                 attributes=_attributes,
+                 values=_values)
 
                 # Run meta update 
                 self.collect_samples(self.args.update_frequency)
@@ -381,7 +365,7 @@ class Agent(object):
             print('Dist Entropy: %4f' %(dist_entropy))
 
             #'''
-            if j % self.args.save_interval == 0 and self.args.save_dir != "":
+            if j % 10 == 0 and self.args.save_dir != "":
                 episode_num = j * self.args.update_frequency
                 filename = self.args.save_dir + self.args.env_name + '_' + \
                            str(episode_num) + '.pt'

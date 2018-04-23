@@ -31,14 +31,11 @@ def main():
 
     os.environ['OMP_NUM_THREADS'] = '1'
 
-    agent = Agent(args)
-    #filename = 'noentropyposx/AntEnv_5000.pt' 
-    #agent.test(filename)
-    
+    agent = Agent(args)   
     if args.test:
         agent.test(args.model_filename)
     else:
-        agent.train()
+        agent.train_maml()
 
 if __name__ == "__main__":
     main()

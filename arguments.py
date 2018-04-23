@@ -5,12 +5,20 @@ def get_args():
     parser = argparse.ArgumentParser(description='RL')
     parser.add_argument(
             '--env-name',
-            default='AntEnv')
+            default='ant')
     parser.add_argument(
             "--velocity-dir",
             default='posx',
             help='set one from: posx | posy | negx | negy ')
-    
+    parser.add_argument(
+            '--use-gym-obs',
+            action='store_true',
+            help='for using gym observation in rllab env')
+    parser.add_argument(
+            '--use-gym-reward',
+            action='store_true',
+            help='for using gym reward in rllab env')
+
     # HYPERPARAMETERS
     parser.add_argument(
             '--algo', 
@@ -32,6 +40,11 @@ def get_args():
             type=float, 
             default=0.2,
             help='ppo clip parameter (default: 0.2)')
+    parser.add_argument(
+            '--reward-scale',
+            type=float,
+            default=1.0,
+            help='reward scaling factor')
 
     parser.add_argument(
             '--num-updates', 
@@ -41,7 +54,7 @@ def get_args():
     parser.add_argument(
             '--update-frequency', 
             type=int, 
-            default=1,
+            default=2,
             help='update model after every ... episodes')
     parser.add_argument(
             '--episode-max-length',
@@ -53,17 +66,17 @@ def get_args():
     parser.add_argument(
             '--lr', 
             type=float, 
-            default=1e-4,
-            help='learning rate (default: 7e-4)')    
+            default=3e-4,
+            help='learning rate (default: 3e-4)')    
     parser.add_argument(
             '--gamma',
             type=float,
-            default=0.99,
+            default=0.995,
             help='discount factor for rewards (default: 0.99)')   
     parser.add_argument(
             '--tau',
             type=float, 
-            default=0.95,
+            default=0.98,
             help='gae parameter (default: 0.95)')
     parser.add_argument(
             '--entropy-coef', 
@@ -91,8 +104,8 @@ def get_args():
 
     parser.add_argument(
             '--log-dir', 
-            default='/tmp/gym/',
-            help='directory to save agent logs (default: /tmp/gym)')
+            default='./log_directory',
+            help='tensorboard log directory')
     parser.add_argument(
             '--save-dir', 
             default='./trained_models/',
@@ -109,25 +122,12 @@ def get_args():
     parser.add_argument(
             '--seed', 
             type=int, 
-            default=2018,
-            help='random seed (default: 2018)')
+            default=10,
+            help='random seed (default: 10)')
     parser.add_argument(
-            '--no-cuda', 
+            '--cuda', 
             action='store_true', 
             help='disables CUDA training')
-    parser.add_argument(
-            '--recurrent-policy', 
-            action='store_true', 
-            help='use a recurrent policy')
-    parser.add_argument(
-            '--no-vis', 
-            action='store_true', 
-            help='disables visdom visualization')
-    parser.add_argument(
-            '--port', 
-            type=int, 
-            default=8097,
-            help='port to run the server on (default: 8097)')
     parser.add_argument(
             '--eps', 
             type=float, 
@@ -139,27 +139,20 @@ def get_args():
             default=0.99,
             help='RMSprop optimizer apha (default: 0.99)')
     parser.add_argument(
-            '--log-interval', 
-            type=int, 
-            default=10,
-            help='log interval, one log per ... updates (default: 10)')
-    parser.add_argument(
             '--save-interval', 
             type=int, 
-            default=500,
+            default=100,
             help='save interval, one save per ... updates (default: 100)')
     parser.add_argument(
-            '--vis-interval', 
-            type=int, 
-            default=100,
-            help='vis interval, one log per ... updates (default: 100)')
+            '--eval-interval',
+            type=int,
+            default=25,
+            help='evaluate model every ... updates')
+    
     args = parser.parse_args()
-
-
     args.num_updates = int(args.num_updates)
     args.use_gae = not args.no_gae
     args.use_adam = not args.no_adam
-    args.cuda = not args.no_cuda and torch.cuda.is_available()
-    args.vis = not args.no_vis
+    args.cuda = args.cuda and torch.cuda.is_available()
     args.save_dir += args.velocity_dir + '/'
     return args
