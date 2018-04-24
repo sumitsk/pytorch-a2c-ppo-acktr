@@ -45,6 +45,11 @@ def get_args():
             type=float,
             default=1.0,
             help='reward scaling factor')
+    parser.add_argument(
+            '--penalty',
+            type=float,
+            default=3.0,
+            help='penalty for velocity in perpendicular direction')
 
     parser.add_argument(
             '--num-updates', 

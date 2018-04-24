@@ -39,11 +39,13 @@ class Agent(object):
             env = AntEnv()
             # set the target velocity direction (for learning sub-policies)
             env.velocity_dir = self.args.velocity_dir
+            env.penalty = self.args.penalty
+            
             # use gym environment observation 
             env.use_gym_obs = self.args.use_gym_obs
             # use gym environment reward
             env.use_gym_reward = self.args.use_gym_reward
-
+            
         elif self.args.env_name == 'swimmer':
             from rllab.envs.mujoco.swimmer_env import SwimmerEnv
             env = SwimmerEnv()  
