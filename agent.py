@@ -75,7 +75,7 @@ class Agent(object):
         # concatenation of all episodes' rollout
         self.rollouts = RolloutStorage()    
         # this directory is used for tensorboardX only
-        self.writer = SummaryWriter('log_directory/maml_alltest1'+self.args.velocity_dir)
+        self.writer = SummaryWriter('log_directory/train_mamltest1'+self.args.velocity_dir)
 
         self.episodes = 0
         self.episode_steps = []
@@ -422,12 +422,11 @@ class Agent(object):
                 _attributes = []
                 _values = []
 
-                for k in task.keys():
-                    v = task[k]
-                    _tag_names.append(k)
-                    _tag_identifiers.append(v[0])
-                    _attributes.append(v[1])
-                    _values.append(v[2])
+                for i in range(len(task)):
+                    _tag_names.append(task[i][0])
+                    _tag_identifiers.append(task[i][1][0])
+                    _attributes.append(task[i][1][1])
+                    _values.append(task[i][1][2])
 
                 self.env_unnorm.change_model(tag_names=_tag_names, 
                  tag_identifiers=_tag_identifiers, 
