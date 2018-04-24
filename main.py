@@ -35,7 +35,7 @@ def main():
     if args.test:
         agent.test(args.model_filename)
     else:
-        agent.train_maml()
+        agent.train()
 
 if __name__ == "__main__":
     main()

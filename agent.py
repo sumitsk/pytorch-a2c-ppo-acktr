@@ -39,7 +39,7 @@ class Agent(object):
     def __init__(self, args):
         self.args = args
 
-        self.xml_file_name = 'maml_test1'
+        self.xml_file_name = 'train_test1'
 
         if self.args.env_name == 'ant':
             from rllab.envs.mujoco.ant_env import AntEnv
@@ -75,7 +75,7 @@ class Agent(object):
         # concatenation of all episodes' rollout
         self.rollouts = RolloutStorage()    
         # this directory is used for tensorboardX only
-        self.writer = SummaryWriter('log_directory/train_mamltest1'+self.args.velocity_dir)
+        self.writer = SummaryWriter('log_directory/new_normal1'+self.args.velocity_dir)
 
         self.episodes = 0
         self.episode_steps = []
@@ -248,7 +248,7 @@ class Agent(object):
         
         start = time.time()
         j = 0
-        num_tasks = 100
+        num_tasks = 1000
         sample_size = 1
 
         task_list = []
@@ -334,7 +334,7 @@ class Agent(object):
 
         start_time = time.time()
         theta_list = []
-        num_tasks = 100
+        num_tasks = 1000
         sample_size = 10
         task_list = []
 
