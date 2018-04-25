@@ -39,7 +39,7 @@ class Agent(object):
     def __init__(self, args):
         self.args = args
 
-        self.xml_file_name = 'train_test1'
+        self.xml_file_name = 'kvr_maml_' + self.args.velocity_dir +'.xml'
 
         if self.args.env_name == 'ant':
             from rllab.envs.mujoco.ant_env import AntEnv
@@ -75,7 +75,7 @@ class Agent(object):
         # concatenation of all episodes' rollout
         self.rollouts = RolloutStorage()    
         # this directory is used for tensorboardX only
-        self.writer = SummaryWriter('log_directory/new_normal1'+self.args.velocity_dir)
+        self.writer = SummaryWriter('log_directory/kvr_maml1'+self.args.velocity_dir)
 
         self.episodes = 0
         self.episode_steps = []
@@ -293,11 +293,11 @@ class Agent(object):
             _values = []
 
             # Change the task variables in the environment
-            for i in range(len(task)):
-                _tag_names.append(task[i][0])
-                _tag_identifiers.append(task[i][1][0])
-                _attributes.append(task[i][1][1])
-                _values.append(task[i][1][2])
+            for q in range(len(task)):
+                _tag_names.append(task[q][0])
+                _tag_identifiers.append(task[q][1][0])
+                _attributes.append(task[q][1][1])
+                _values.append(task[q][1][2])
             
 
             self.env_unnorm.change_model(tag_names=_tag_names, 
@@ -384,11 +384,11 @@ class Agent(object):
                 _values = []
 
                 # Change the task variables in the environment
-                for i in range(len(task)):
-                    _tag_names.append(task[i][0])
-                    _tag_identifiers.append(task[i][1][0])
-                    _attributes.append(task[i][1][1])
-                    _values.append(task[i][1][2])
+                for q in range(len(task)):
+                    _tag_names.append(task[q][0])
+                    _tag_identifiers.append(task[q][1][0])
+                    _attributes.append(task[q][1][1])
+                    _values.append(task[q][1][2])
 
                 self.env_unnorm.change_model(tag_names=_tag_names, 
                  tag_identifiers=_tag_identifiers, 
@@ -422,11 +422,11 @@ class Agent(object):
                 _attributes = []
                 _values = []
 
-                for i in range(len(task)):
-                    _tag_names.append(task[i][0])
-                    _tag_identifiers.append(task[i][1][0])
-                    _attributes.append(task[i][1][1])
-                    _values.append(task[i][1][2])
+                for w in range(len(task)):
+                    _tag_names.append(task[w][0])
+                    _tag_identifiers.append(task[w][1][0])
+                    _attributes.append(task[w][1][1])
+                    _values.append(task[w][1][2])
 
                 self.env_unnorm.change_model(tag_names=_tag_names, 
                  tag_identifiers=_tag_identifiers, 
@@ -436,7 +436,7 @@ class Agent(object):
                 # Run meta update 
                 self.collect_samples(self.args.update_frequency)
                 self.pre_update()
-                dist_entropy, value_loss, action_loss = meta_update(self,theta_list[k1],theta_copy)
+                dist_entropy, value_loss, action_loss = meta_update(self,theta_list[k1],theta_copy,theta)
                 self.post_update()
 
                 theta = self.get_weights()
@@ -451,7 +451,7 @@ class Agent(object):
 
             #'''
             if j % 10 == 0 and self.args.save_dir != "":
-                episode_num = j * self.args.update_frequency
+                episode_num = j*20 * self.args.update_frequency
                 filename = self.args.save_dir + self.args.env_name + '_' + \
                            str(episode_num) + '.pt'
                 self.save(episode_num, filename)

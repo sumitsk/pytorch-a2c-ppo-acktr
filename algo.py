@@ -113,7 +113,7 @@ def acktr_update(agent):
     return dist_entropy, value_loss, action_loss
 
 
-def meta_update(agent,theta_loss,theta_grad):
+def meta_update(agent,theta_loss,theta_grad,theta_update):
     advantages = agent.rollouts.returns - agent.rollouts.value_preds
     advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
 
@@ -159,6 +159,7 @@ def meta_update(agent,theta_loss,theta_grad):
             agent.meta_optimizer.zero_grad()
             grads = torch.autograd.grad((value_loss + action_loss - dist_entropy * agent.args.entropy_coef), agent.actor_critic.parameters())
             grads = clip_grad_norm_(grads,agent.args.max_grad_norm)
+            set_weights(agent,theta_update)    
             agent.meta_optimizer.step(grads)
 
     return dist_entropy, value_loss, action_loss
