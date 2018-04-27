@@ -140,7 +140,7 @@ class Agent(object):
             next_obs = Tensor(next_obs).view(1, -1)
             
             if render:
-            	self.env.render()
+                self.env.render()
         
             # a constant reward scaling factor can be introduced to stabilise training and prevent large value losses
             r = reward * self.args.reward_scale
@@ -151,14 +151,14 @@ class Agent(object):
             self.current_obs.copy_(next_obs)
         
         if not test:
-	        next_value = self.actor_critic.forward(
-	                        Variable(rollout.observations[-1], volatile=True)
-	                        )[0].data
-	        rollout.compute_returns(next_value, self.args.use_gae,
-	                                self.args.gamma, self.args.tau)
+                next_value = self.actor_critic.forward(
+                                Variable(rollout.observations[-1], volatile=True)
+                                )[0].data
+                rollout.compute_returns(next_value, self.args.use_gae,
+                                        self.args.gamma, self.args.tau)
 
-	        self.episode_steps.append(step)
-	        
+                self.episode_steps.append(step)
+                
         return rollout
         
     def pre_update(self):
@@ -230,8 +230,8 @@ class Agent(object):
         return np.mean(rewards), np.std(rewards)            
 
 
-    def test(self, filename, num_episodes=100):
-    	self.load(filename)
-    	for i in range(num_episodes):
-    		rollout = self.rollout_episode(test=True, render=True)
-    		print('Episode %d Reward: %4f' %(i+1, np.sum(rollout.rewards)))
+    def test(self, num_episodes=100):
+        self.load(self.args.model_filename)
+        for i in range(num_episodes):
+                rollout = self.rollout_episode(test=True, render=True)
+                print('Episode %d Reward: %4f' %(i+1, np.sum(rollout.rewards)))
