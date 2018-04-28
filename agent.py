@@ -39,7 +39,7 @@ class Agent(object):
     def __init__(self, args):
         self.args = args
 
-        self.xml_file_name = 'kvr_maml_' + self.args.velocity_dir +'.xml'
+        self.xml_file_name = 'kvr_maml_ltpx' + self.args.velocity_dir +'.xml'
 
         if self.args.env_name == 'ant':
             from rllab.envs.mujoco.ant_env import AntEnv
@@ -75,7 +75,7 @@ class Agent(object):
         # concatenation of all episodes' rollout
         self.rollouts = RolloutStorage()    
         # this directory is used for tensorboardX only
-        self.writer = SummaryWriter('log_directory/kvr_maml1'+self.args.velocity_dir)
+        self.writer = SummaryWriter('log_directory/kvr_maml_lt'+self.args.velocity_dir)
 
         self.episodes = 0
         self.episode_steps = []
@@ -241,7 +241,7 @@ class Agent(object):
     def test(self, filename, num_episodes=100):
         self.load(filename)
         for i in range(num_episodes):
-            rollout = self.rollout_episode(test=True, render=True)
+            rollout = self.rollout_episode(test=True, render=False)
             print('Episode %d Reward: %4f' %(i+1, np.sum(rollout.rewards)))
 
     def train_task(self):
@@ -340,10 +340,9 @@ class Agent(object):
 
         #Task distribution in task_list
         for i in range(num_tasks):
-            friction = np.random.randint(low=1, high=10, size=3).astype('float32')/10.
-            friction_1 = np.random.uniform(low=0.1, high=0.8, size=3).astype('float32')
-            size1 = np.random.uniform(low=0.75*0.25,high=1.25*0.25,size=1).astype('float32')
-            size_ankle = np.random.uniform(low=0.75*0.08,high=1.25*0.08,size=1).astype('float32')
+            friction_1 = np.random.uniform(low=0.05, high=1.5, size=3).astype('float32')
+            size1 = np.random.uniform(low=0.5*0.25,high=1.5*0.25,size=1).astype('float32')
+            size_ankle = np.random.uniform(low=0.5*0.08,high=1.5*0.08,size=1).astype('float32')
             task = [['default/geom', ['', 'friction', '{0:.1f} {1:.1f} {2:.1f}'.format(
                     friction_1[0],
                     friction_1[1],
@@ -455,6 +454,57 @@ class Agent(object):
                 filename = self.args.save_dir + self.args.env_name + '_' + \
                            str(episode_num) + '.pt'
                 self.save(episode_num, filename)
+
+    def task_test(self, filename, num_episodes=20):
+        self.load(filename)
+
+        _tag_names = []
+        _tag_identifiers = []
+        _attributes = []
+        _values = []
+
+        friction_1 = np.array([0.1,0.1,0.1])
+        size1 = 0.25*0.25 #0.25
+        size_ankle = 0.25*0.08 #0.08
+        task = [['default/geom', ['', 'friction', '{0:.1f} {1:.1f} {2:.1f}'.format(
+                friction_1[0],
+                friction_1[1],
+                friction_1[2])]],
+            ['worldbody/body/geom', ['','size','{0:.2f}'.format(size1)]],
+            ['worldbody/body/body/body/body/geom', [[['name','front_left_leg'],['name','aux_1'],['pos','0.2 0.2 0'], ['name','left_ankle_geom']], 
+                                'size',
+                                '{0:.2f}'.format(size_ankle)]],
+            ['worldbody/body/body/body/body/geom', [[['name','front_right_leg'],['name','aux_2'],['pos','-0.2 0.2 0'], ['name','right_ankle_geom']], 
+                                'size',
+                                '{0:.2f}'.format(size_ankle)]],
+            ['worldbody/body/body/body/body/geom', [[['name','back_leg'],['name','aux_3'],['pos','-0.2 -0.2 0'], ['name','third_ankle_geom']], 
+                                'size',
+                                '{0:.2f}'.format(size_ankle)]],
+            ['worldbody/body/body/body/body/geom', [[['name','right_back_leg'],['name','aux_4'],['pos','0.2 -0.2 0'], ['name','fourth_ankle_geom']], 
+                                'size',
+                                '{0:.2f}'.format(size_ankle)]]]
+
+        # Change the task variables in the environment
+        for q in range(len(task)):
+            _tag_names.append(task[q][0])
+            _tag_identifiers.append(task[q][1][0])
+            _attributes.append(task[q][1][1])
+            _values.append(task[q][1][2])
+
+        self.env_unnorm.change_model(tag_names=_tag_names, 
+         tag_identifiers=_tag_identifiers, 
+         attributes=_attributes,
+         values=_values,xml_file_name=self.xml_file_name)
+        
+        test_rewards = []
+        for i in range(num_episodes):
+            rollout = self.rollout_episode(test=True, render=False)
+            print('Episode %d Reward: %4f' %(i+1, np.sum(rollout.rewards)))
+            test_rewards.append(np.sum(rollout.rewards))
+
+        print("Mean %1.2f" %np.mean(test_rewards))
+        print("Standard Deviation %1.2f" %np.std(test_rewards))
+
 
     def meta_test(self, filename, num_episodes=100):
         self.load(filename)

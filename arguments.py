@@ -66,7 +66,7 @@ def get_args():
     parser.add_argument(
             '--lr', 
             type=float, 
-            default=3e-4,
+            default=1e-4,
             help='learning rate (default: 3e-4)')    
     parser.add_argument(
             '--gamma',
