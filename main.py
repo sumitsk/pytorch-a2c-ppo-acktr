@@ -33,7 +33,7 @@ def main():
 
     agent = Agent(args)   
     if args.test:
-        agent.task_test(args.model_filename)
+        agent.meta_test(args.model_filename)
     else:
         agent.train_maml()
 

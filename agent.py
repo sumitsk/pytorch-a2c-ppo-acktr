@@ -506,25 +506,68 @@ class Agent(object):
         print("Standard Deviation %1.2f" %np.std(test_rewards))
 
 
-    def meta_test(self, filename, num_episodes=100):
+    def meta_test(self, filename, num_episodes=20):
         self.load(filename)
 
+        _tag_names = []
+        _tag_identifiers = []
+        _attributes = []
+        _values = []
+
+        friction_1 = np.array([1.2,1.2,1.2])
+        size1 = 1.5*0.25 #0.25
+        size_ankle = 1.5*0.08 #0.08
+        task = [['default/geom', ['', 'friction', '{0:.1f} {1:.1f} {2:.1f}'.format(
+                friction_1[0],
+                friction_1[1],
+                friction_1[2])]],
+            ['worldbody/body/geom', ['','size','{0:.2f}'.format(size1)]],
+            ['worldbody/body/body/body/body/geom', [[['name','front_left_leg'],['name','aux_1'],['pos','0.2 0.2 0'], ['name','left_ankle_geom']], 
+                                'size',
+                                '{0:.2f}'.format(size_ankle)]],
+            ['worldbody/body/body/body/body/geom', [[['name','front_right_leg'],['name','aux_2'],['pos','-0.2 0.2 0'], ['name','right_ankle_geom']], 
+                                'size',
+                                '{0:.2f}'.format(size_ankle)]],
+            ['worldbody/body/body/body/body/geom', [[['name','back_leg'],['name','aux_3'],['pos','-0.2 -0.2 0'], ['name','third_ankle_geom']], 
+                                'size',
+                                '{0:.2f}'.format(size_ankle)]],
+            ['worldbody/body/body/body/body/geom', [[['name','right_back_leg'],['name','aux_4'],['pos','0.2 -0.2 0'], ['name','fourth_ankle_geom']], 
+                                'size',
+                                '{0:.2f}'.format(size_ankle)]]]
+
+        # Change the task variables in the environment
+        for q in range(len(task)):
+            _tag_names.append(task[q][0])
+            _tag_identifiers.append(task[q][1][0])
+            _attributes.append(task[q][1][1])
+            _values.append(task[q][1][2])
+
+        self.env_unnorm.change_model(tag_names=_tag_names, 
+         tag_identifiers=_tag_identifiers, 
+         attributes=_attributes,
+         values=_values,xml_file_name=self.xml_file_name)
+
         #Do a few gradient updates
-        num_grad_updates = 10
+        num_grad_updates = 6
         start = time.time()
         j = 0
         while j < num_grad_updates:
             j += 1
+            print('Gradient Update: %s' %j)
             self.collect_samples(self.args.update_frequency)
             self.pre_update()
             dist_entropy, value_loss, action_loss = update(self)
             self.post_update()
 
-        for i in range(num_episodes):
-            rollout = self.rollout_episode(test=True, render=True)
-            print('Episode %d Reward: %4f' %(i+1, np.sum(rollout.rewards)))
 
-            #Write the rendering env stuff here
+        test_rewards = []    
+        for i in range(num_episodes):
+            rollout = self.rollout_episode(test=True, render=False)
+            print('Episode %d Reward: %4f' %(i+1, np.sum(rollout.rewards)))
+            test_rewards.append(np.sum(rollout.rewards))
+
+        print("Mean %1.2f" %np.mean(test_rewards))
+        print("Standard Deviation %1.2f" %np.std(test_rewards))
 
     def get_weights(self):
         # state_dicts = {'id': id,
