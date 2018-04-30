@@ -39,7 +39,7 @@ class Agent(object):
     def __init__(self, args):
         self.args = args
 
-        self.xml_file_name = 'kvr_maml_ltpx' + self.args.velocity_dir +'.xml'
+        self.xml_file_name = 'kvr_maml_assym2' + self.args.velocity_dir +'.xml'
 
         if self.args.env_name == 'ant':
             from rllab.envs.mujoco.ant_env import AntEnv
@@ -75,7 +75,7 @@ class Agent(object):
         # concatenation of all episodes' rollout
         self.rollouts = RolloutStorage()    
         # this directory is used for tensorboardX only
-        self.writer = SummaryWriter('log_directory/kvr_maml_lt'+self.args.velocity_dir)
+        self.writer = SummaryWriter('log_directory/maml_assym_fric2'+self.args.velocity_dir)
 
         self.episodes = 0
         self.episode_steps = []
@@ -118,6 +118,22 @@ class Agent(object):
         checkpoint = torch.load(filename, map_location={load_device: target_device})
         self.actor_critic.load_state_dict(checkpoint['state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer'])
+        episode_number = checkpoint['episode_number']
+        return episode_number
+
+    def load_meta(self, filename):
+        # load models
+        #'''
+        load_device = 'cuda:0'
+        target_device = 'cpu'
+        #target_device = 'cuda:0' if use_cuda else 'cpu'
+        '''
+        load_device = 'cpu'
+        target_device = 'cpu'
+        '''  
+        checkpoint = torch.load(filename, map_location={load_device: target_device})
+        self.actor_critic.load_state_dict(checkpoint['state_dict'])
+        # self.optimizer.load_state_dict(checkpoint['optimizer'])
         episode_number = checkpoint['episode_number']
         return episode_number
 
@@ -335,12 +351,12 @@ class Agent(object):
         start_time = time.time()
         theta_list = []
         num_tasks = 1000
-        sample_size = 10
+        sample_size = 20
         task_list = []
 
         #Task distribution in task_list
         for i in range(num_tasks):
-            friction_1 = np.random.uniform(low=0.05, high=1.5, size=3).astype('float32')
+            friction_1 = np.random.uniform(low=0.1, high=1.0, size=3).astype('float32')
             size1 = np.random.uniform(low=0.5*0.25,high=1.5*0.25,size=1).astype('float32')
             size_ankle = np.random.uniform(low=0.5*0.08,high=1.5*0.08,size=1).astype('float32')
             task = [['default/geom', ['', 'friction', '{0:.1f} {1:.1f} {2:.1f}'.format(
@@ -463,9 +479,11 @@ class Agent(object):
         _attributes = []
         _values = []
 
-        friction_1 = np.array([0.1,0.1,0.1])
-        size1 = 0.25*0.25 #0.25
-        size_ankle = 0.25*0.08 #0.08
+        friction_1 = np.array([0.2,0.1,0.8])
+        size1 = 1.5*0.25 #0.25
+        size_ankle = [1*0.08]*4 #0.08
+
+        #size_ankle = [0.5*0.08,1*0.08,1*0.08,0.5*0.08]
         task = [['default/geom', ['', 'friction', '{0:.1f} {1:.1f} {2:.1f}'.format(
                 friction_1[0],
                 friction_1[1],
@@ -473,16 +491,16 @@ class Agent(object):
             ['worldbody/body/geom', ['','size','{0:.2f}'.format(size1)]],
             ['worldbody/body/body/body/body/geom', [[['name','front_left_leg'],['name','aux_1'],['pos','0.2 0.2 0'], ['name','left_ankle_geom']], 
                                 'size',
-                                '{0:.2f}'.format(size_ankle)]],
+                                '{0:.2f}'.format(size_ankle[0])]],
             ['worldbody/body/body/body/body/geom', [[['name','front_right_leg'],['name','aux_2'],['pos','-0.2 0.2 0'], ['name','right_ankle_geom']], 
                                 'size',
-                                '{0:.2f}'.format(size_ankle)]],
+                                '{0:.2f}'.format(size_ankle[1])]],
             ['worldbody/body/body/body/body/geom', [[['name','back_leg'],['name','aux_3'],['pos','-0.2 -0.2 0'], ['name','third_ankle_geom']], 
                                 'size',
-                                '{0:.2f}'.format(size_ankle)]],
+                                '{0:.2f}'.format(size_ankle[2])]],
             ['worldbody/body/body/body/body/geom', [[['name','right_back_leg'],['name','aux_4'],['pos','0.2 -0.2 0'], ['name','fourth_ankle_geom']], 
                                 'size',
-                                '{0:.2f}'.format(size_ankle)]]]
+                                '{0:.2f}'.format(size_ankle[3])]]]
 
         # Change the task variables in the environment
         for q in range(len(task)):
@@ -507,16 +525,17 @@ class Agent(object):
 
 
     def meta_test(self, filename, num_episodes=20):
-        self.load(filename)
+        self.load_meta(filename)
 
         _tag_names = []
         _tag_identifiers = []
         _attributes = []
         _values = []
 
-        friction_1 = np.array([1.2,1.2,1.2])
-        size1 = 1.5*0.25 #0.25
-        size_ankle = 1.5*0.08 #0.08
+        friction_1 = np.array([0.5,0.5,0.5])
+        size1 = 1*0.25 #0.25
+        # size_ankle = [1.5*0.08]*4
+        size_ankle = [0.5*0.08,1*0.08,1*0.08,0.5*0.08]
         task = [['default/geom', ['', 'friction', '{0:.1f} {1:.1f} {2:.1f}'.format(
                 friction_1[0],
                 friction_1[1],
@@ -524,16 +543,16 @@ class Agent(object):
             ['worldbody/body/geom', ['','size','{0:.2f}'.format(size1)]],
             ['worldbody/body/body/body/body/geom', [[['name','front_left_leg'],['name','aux_1'],['pos','0.2 0.2 0'], ['name','left_ankle_geom']], 
                                 'size',
-                                '{0:.2f}'.format(size_ankle)]],
+                                '{0:.2f}'.format(size_ankle[0])]],
             ['worldbody/body/body/body/body/geom', [[['name','front_right_leg'],['name','aux_2'],['pos','-0.2 0.2 0'], ['name','right_ankle_geom']], 
                                 'size',
-                                '{0:.2f}'.format(size_ankle)]],
+                                '{0:.2f}'.format(size_ankle[1])]],
             ['worldbody/body/body/body/body/geom', [[['name','back_leg'],['name','aux_3'],['pos','-0.2 -0.2 0'], ['name','third_ankle_geom']], 
                                 'size',
-                                '{0:.2f}'.format(size_ankle)]],
+                                '{0:.2f}'.format(size_ankle[2])]],
             ['worldbody/body/body/body/body/geom', [[['name','right_back_leg'],['name','aux_4'],['pos','0.2 -0.2 0'], ['name','fourth_ankle_geom']], 
                                 'size',
-                                '{0:.2f}'.format(size_ankle)]]]
+                                '{0:.2f}'.format(size_ankle[3])]]]
 
         # Change the task variables in the environment
         for q in range(len(task)):
@@ -548,7 +567,7 @@ class Agent(object):
          values=_values,xml_file_name=self.xml_file_name)
 
         #Do a few gradient updates
-        num_grad_updates = 6
+        num_grad_updates = 5
         start = time.time()
         j = 0
         while j < num_grad_updates:
