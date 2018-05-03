@@ -18,7 +18,9 @@ def main():
 
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
-        
+    if not os.path.exists(args.log_dir):
+        os.makedirs(args.log_dir)
+
     agent = Agent(args)   
     if args.test:
         agent.test()

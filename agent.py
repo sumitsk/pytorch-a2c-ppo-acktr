@@ -68,7 +68,7 @@ class Agent(object):
         # concatenation of all episodes' rollout
         self.rollouts = RolloutStorage()    
         # this directory is used for tensorboardX only
-        self.writer = SummaryWriter('log_directory/'+self.args.velocity_dir)
+        self.writer = SummaryWriter(args.log_dir+self.args.velocity_dir)
 
         self.episodes = 0
         self.episode_steps = []

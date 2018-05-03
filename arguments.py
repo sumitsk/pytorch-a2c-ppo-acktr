@@ -109,7 +109,7 @@ def get_args():
 
     parser.add_argument(
             '--log-dir', 
-            default='./log_directory',
+            default='./log_directory/',
             help='tensorboard log directory')
     parser.add_argument(
             '--save-dir', 
