@@ -1,7 +1,6 @@
 import torch
 # requires more recent version of torch
 from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
-import ipdb
 
 
 class RolloutStorage(object):
