@@ -1,0 +1,8 @@
+ant*/
+final_models/
+gear*/
+log*/
+trained_models/
+*subpolicies/
+*posx/
+*negy/

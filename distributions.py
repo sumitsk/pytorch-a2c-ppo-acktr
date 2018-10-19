@@ -3,7 +3,6 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd import Variable
 from utils import AddBias
 
 
@@ -21,7 +20,7 @@ class Categorical(nn.Module):
 
         probs = F.softmax(x, dim=1)
         if deterministic is False:
-            action = probs.multinomial()
+            action = probs.multinomial(1)
         else:
             action = probs.max(1, keepdim=True)[1]
         return action
@@ -48,10 +47,8 @@ class DiagGaussian(nn.Module):
         action_mean = self.fc_mean(x)
 
         #  An ugly hack for my KFAC implementation.
-        zeros = Variable(torch.zeros(action_mean.size()), volatile=x.volatile)
-        if x.is_cuda:
-            zeros = zeros.cuda()
-
+        zeros = torch.zeros(action_mean.size()).to(x.device)
+        
         action_logstd = self.logstd(zeros)
         return action_mean, action_logstd
 
@@ -61,9 +58,7 @@ class DiagGaussian(nn.Module):
         action_std = action_logstd.exp()
 
         if deterministic is False:
-            noise = Variable(torch.randn(action_std.size()))
-            if action_std.is_cuda:
-                noise = noise.cuda()
+            noise = torch.randn(action_std.size()).to(action_std.device)
             action = action_mean + action_std * noise
         else:
             action = action_mean
