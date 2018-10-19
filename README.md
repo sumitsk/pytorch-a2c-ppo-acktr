@@ -17,11 +17,10 @@ We use the above-listed versions, however, the latest versions may also be compa
 ## Results
 ### Trained models
 The final policies are present in `results` directory. The corresponding learned behaviors are:
-
-![alt text](https://github.com/sumitsk/results/posx.gif "East")
-![alt text](https://github.com/sumitsk/results/negx.gif "West")
-![alt text](https://github.com/sumitsk/results/posy.gif "North")
-![alt text](https://github.com/sumitsk/results/negy.gif "South")
+![alt text](https://github.com/sumitsk/pytorch-pg-rllab/tree/master/videos/posx.gif "East")
+![alt text](https://github.com/sumitsk/pytorch-pg-rllab/tree/master/videos/negx.gif "West")
+![alt text](https://github.com/sumitsk/pytorch-pg-rllab/tree/master/videos/posy.gif "North")
+![alt text](https://github.com/sumitsk/pytorch-pg-rllab/tree/master/videos/negy.gif "South")
 
 Note that the agent moves in a straight line and deviates very little in all four cases.
 
